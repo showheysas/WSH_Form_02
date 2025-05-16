@@ -10,29 +10,17 @@ import re
 from streamlit_extras.switch_page_button import switch_page
 from streamlit_extras.stylable_container import stylable_container
 
-
-# Google Sheets API
+# Google Sheets API認証
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_path = "google-credentials.json"
-if os.path.exists(creds_path):
-    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
+
+if "GOOGLE_SERVICE_ACCOUNT_JSON" in st.secrets:
+    service_account_info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT_JSON"])
+    creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
     client = gspread.authorize(creds)
     sheet = client.open("202505-WSH-Form").sheet1
 else:
-    st.error("Google認証ファイルが見つかりません。google-credentials.json を配置してください。")
+    st.error("Google認証情報が見つかりません。Secretsを設定してください。")
     sheet = None
-
-# # Google Sheets API認証
-# scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
-# if "GOOGLE_SERVICE_ACCOUNT_JSON" in st.secrets:
-#     service_account_info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT_JSON"])
-#     creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
-#     client = gspread.authorize(creds)
-#     sheet = client.open("202505-WSH-Form").sheet1
-# else:
-#     st.error("Google認証情報が見つかりません。Secretsを設定してください。")
-#     sheet = None
 
 # ページ分岐用クエリ
 query = st.query_params.get("page", "home")
