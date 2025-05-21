@@ -4,4 +4,3 @@ oauth2client
 pandas
 matplotlib
 seaborn
-streamlit_extras

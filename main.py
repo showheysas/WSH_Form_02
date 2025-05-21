@@ -1,117 +1,119 @@
 import streamlit as st
-import datetime
 import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import datetime
 import os
-import re
-import json
-from google.oauth2.service_account import Credentials
 
-# Google Sheets API認証
+# --- Google Sheets API認証 ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
-if "GOOGLE_SERVICE_ACCOUNT_JSON" in st.secrets:
-    service_account_info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT_JSON"])
-    creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
+creds_path = "google-credentials.json"
+if os.path.exists(creds_path):
+    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
     client = gspread.authorize(creds)
-    sheet = client.open("202505-WSH-Form").sheet1
+    sheet = client.open("202505-WSH-Form").worksheet("topics")
 else:
-    st.error("Google認証情報が見つかりません。Secretsを設定してください。")
+    st.error("Google認証ファイルが見つかりません。google-credentials.json を配置してください。")
     sheet = None
 
-# UIスタイル
-st.title("週末共有会アンケート！")
+# --- データ取得 ---
+def load_data():
+    if sheet:
+        data = sheet.get_all_records()
+        return pd.DataFrame(data)
+    return pd.DataFrame(columns=["Name", "Topic", "Votes"])  # パスワード列を削除
 
-st.markdown("""
-Tech0・9期の週末共有会の開催時間を決めるアンケートです。  
-参加しやすい時間帯をチェックボックスで選んで「送信」してください！  
-名前・ご意見は任意です。無記名でも回答できます。  
-みなさんの回答でヒートマップも進化します！  
-ぜひ回答ください！
-""")
+# --- データ保存 ---
+def save_data(name, topic):  # パスワードパラメータを削除
+    if sheet:
+        sheet.append_row([name, topic, 1])  # パスワードを保存しない
 
-# 英語表記の曜日
-days = ["Sat", "Sun", "Mon", "Fri"]
-hours = [f"{h}:00" for h in range(6, 24)]
-column_ratios = [1] + [1] * len(days)
+# --- 投票数更新 ---
+def update_votes(index, votes):
+    if sheet:
+        sheet.update_cell(index + 2, 3, votes)  # Google Sheetsは1行目がヘッダー
+        st.rerun()  # ページをリロード
 
-selected_slots = []
-with st.form("time_form"):
-    st.write("### 参加しやすい時間帯を選んでください")
+# --- カスタムCSSの追加 ---
+st.markdown(
+    """
+    <style>
+    /* ボタンの色を青に変更 */
+    div.stButton > button {
+        background-color: #007BFF; /* 青色 */
+        color: white;
+        border-radius: 5px;
+        padding: 10px 20px;
+        font-size: 16px;
+        border: none;
+    }
+    div.stButton > button:hover {
+        background-color: #0056b3; /* ホバー時の色 */
+    }
 
-    # ヘッダー行
-    header_cols = st.columns(column_ratios)
-    header_cols[0].write(" ")
-    for i, day in enumerate(days):
-        label = "🟦 Sat" if day == "Sat" else "🟥 Sun" if day == "Sun" else day
-        header_cols[i + 1].write(f"**{label}**")
+    /* テキスト入力欄のラベルを大きくする */
+    label {
+        font-size: 18px; /* サイズを1段階大きく */
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-    # チェックボックスマトリクス
-    for hour in hours:
-        label = f"{hour}～"
-        row = st.columns(column_ratios)
-        row[0].write(f"**{label}**")
-        for i, day in enumerate(days):
-            key = f"{day}-{hour}"
-            if row[i + 1].checkbox(" ", key=key):
-                selected_slots.append(key)
+# --- アンケートフォーム ---
+st.title("WSH（週末共有会）")
+st.title("トピック投稿・投票フォーム")
+st.write("以下のフォームに、聞きたいことor話したいことを入力してください！")
 
-    name = st.text_input("お名前（任意）")
-    feedback = st.text_area("ご意見・ご感想（任意）")
-    submitted = st.form_submit_button("送信")
+# 入力欄
+name = st.text_input("あなたの名前（下のリストには表示されないので、お気軽に！）")
+topic = st.text_input("誰からどんな話を")
 
-    if submitted:
-        if selected_slots:
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            record = [timestamp, name, feedback, ", ".join(selected_slots)]
-            if sheet:
-                next_row = len(sheet.get_all_values()) + 1
-                sheet.insert_row(record, next_row, value_input_option="USER_ENTERED")
-                st.success("ご回答ありがとうございました！")
-        else:
-            st.warning("少なくとも1つの時間帯を選択してください。")
+# ボタン
+col1, col2, col3 = st.columns([2, 1, 2])
+with col1:
+    listen_button = st.button("聞きたい！")
+with col2:
+    st.write("### or")
+with col3:
+    talk_button = st.button("話したい！")
 
-# ヒートマップ表示
-if sheet:
-    try:
-        data = sheet.get_all_values()
-        df = pd.DataFrame(data[1:], columns=["Datetime", "Name", "Feedback", "Selection"])
+if listen_button:
+    if name and topic:
+        save_data(name, f"● {topic}【聞きたい！】")
+        st.success("送信されました！【聞きたい！】")
+    else:
+        st.error("すべてのフィールドを入力してください。")
 
-        all_selected = df["Selection"].dropna().apply(lambda x: re.split(r"\s*,\s*", x)).explode().str.replace("～", "").str.strip()
-        counts = all_selected.value_counts()
+if talk_button:
+    if name and topic:
+        save_data(name, f"● {topic}【話したい！】")
+        st.success("送信されました！【話したい！】")
+    else:
+        st.error("すべてのフィールドを入力してください。")
 
-        heatmap_df = pd.DataFrame(0, index=hours, columns=days)
-        for item, count in counts.items():
-            if "-" in item:
-                day, hour = item.split("-")
-                if day in days and hour in hours:
-                    heatmap_df.loc[hour, day] = count
+# 罫線とスペースの追加
+st.markdown("---")  # 罫線
+st.write("")  # 1行分のスペース
 
-        st.markdown("### 集計ヒートマップ")
-        fig, ax = plt.subplots(figsize=(8, 10))
-        cmap = sns.light_palette("#d3bfa4", as_cmap=True)
-        sns.heatmap(
-            heatmap_df,
-            annot=True,
-            fmt="d",
-            cmap=cmap,
-            ax=ax,
-            cbar_kws={"shrink": 0.6}
-        )
-        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=10)
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=0, fontsize=10)
-        ax.set_xlabel("Day")
-        ax.set_ylabel("Hour")
-        st.pyplot(fig)
+# --- 送信済みデータの表示 ---
+st.write("### 投稿されたトピック案")
+st.write("話題にしたいトピックに投票してください！")
+st.write("間違って入力してしまったなど、削除したい場合はしょうさんまでお知らせください。")
+st.write("")  # 1行分のスペース
+data = load_data()
 
-        st.write(f"回答人数：{df.shape[0]}名")
-
-        st.markdown("### 人気の時間帯トップ3")
-        top3 = counts.head(3)
-        for i, (label, count) in enumerate(top3.items(), 1):
-            st.write(f"{i}. {label}：{count}票")
-
-    except Exception as e:
-        st.error(f"ヒートマップの生成中にエラーが発生しました：{e}")
+if not data.empty:
+    for index, row in data.iterrows():
+        col1, col2, col3 = st.columns([3, 1, 1])  # 列幅の比率を設定
+        with col1:
+            st.write(f"**{row['Topic']}**")
+        with col2:
+            st.write(f"👍 {row['Votes']}")
+        with col3:
+            if st.button("投票", key=f"vote_{index}"):
+                new_votes = row['Votes'] + 1
+                update_votes(index, new_votes)
+                st.success("投票しました！")
+else:
+    st.write("まだ送信されたデータはありません。")
