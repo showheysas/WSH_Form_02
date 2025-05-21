@@ -8,11 +8,12 @@ import json
 from google.oauth2.service_account import Credentials
 
 # --- Google Sheets API認証 ---
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+
 try:
     if "GOOGLE_SERVICE_ACCOUNT_JSON" in st.secrets:
         service_account_info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT_JSON"])
-        creds = Credentials.from_service_account_info(service_account_info)
+        creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
         client = gspread.authorize(creds)
         sheet = client.open("202505-WSH-Form").worksheet("topics")
     else:
