@@ -9,13 +9,17 @@ from google.oauth2.service_account import Credentials
 
 # --- Google Sheets API認証 ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-if "GOOGLE_SERVICE_ACCOUNT_JSON" in st.secrets:
-    service_account_info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT_JSON"])
-    creds = Credentials.from_service_account_info(service_account_info)
-    client = gspread.authorize(creds)
-    sheet = client.open("202505-WSH-Form").worksheet("topics")
-else:
-    st.error("Google認証情報が見つかりません。Secretsを設定してください。")
+try:
+    if "GOOGLE_SERVICE_ACCOUNT_JSON" in st.secrets:
+        service_account_info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT_JSON"])
+        creds = Credentials.from_service_account_info(service_account_info)
+        client = gspread.authorize(creds)
+        sheet = client.open("202505-WSH-Form").worksheet("topics")
+    else:
+        st.error("Google認証情報が見つかりません。Secretsを設定してください。")
+        sheet = None
+except Exception as e:
+    st.error(f"Google Sheets APIの認証に失敗しました: {e}")
     sheet = None
 
 # --- データ取得 ---
